@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { asc, ilike, or, eq, and, sql, type SQL } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { user } from '@/lib/db/schema';
+import { pops, user } from '@/lib/db/schema';
 import { auth } from '@/lib/auth';
 import {
   getApiSession,
   isAdmin,
+  isSuperAdmin,
   unauthorizedResponse,
   forbiddenResponse,
+  badRequestResponse,
 } from '@/lib/auth/utils';
+import { resolvePopScope } from '@/lib/auth/pop-scope';
 import { CreateUserSchema } from '@/types/api';
 
 export const dynamic = 'force-dynamic';
@@ -20,16 +23,23 @@ export async function GET(req: NextRequest) {
     if (!session) return unauthorizedResponse();
     if (!isAdmin(session)) return forbiddenResponse();
 
+    const scope = resolvePopScope(session, req);
+    if ('error' in scope) return scope.error;
+    if (!scope.popId) return badRequestResponse('Pilih POP terlebih dahulu');
+
     const params = req.nextUrl.searchParams;
     const search = params.get('search');
     const role = params.get('role');
 
-    const conditions: SQL[] = [];
+    const conditions: SQL[] = [eq(user.popId, scope.popId)];
     if (search) {
       const cond = or(ilike(user.name, `%${search}%`), ilike(user.email, `%${search}%`));
       if (cond) conditions.push(cond);
     }
-    if (role && ['administrator', 'admin', 'noc', 'teknisi', 'employee'].includes(role)) {
+    if (
+      role &&
+      ['super_admin', 'administrator', 'admin', 'noc', 'teknisi', 'employee', 'gudang'].includes(role)
+    ) {
       conditions.push(eq(user.role, role));
     }
 
@@ -100,6 +110,37 @@ export async function POST(req: NextRequest) {
     const input = parsed.data;
     const email = input.email.toLowerCase();
 
+    // popId TIDAK PERNAH dipercaya mentah-mentah dari client untuk administrator
+    // biasa — dipaksa ke POP miliknya sendiri (mencegah IDOR: admin POP A
+    // membuat akun di POP B lewat body request yang dimanipulasi). super_admin
+    // WAJIB menyertakan popId eksplisit karena dia tidak terikat satu POP.
+    let targetPopId: string;
+    if (isSuperAdmin(session)) {
+      if (!input.popId) {
+        return NextResponse.json(
+          { code: 'VALIDATION_ERROR', message: 'popId wajib diisi oleh super_admin', timestamp: new Date().toISOString() },
+          { status: 400 }
+        );
+      }
+      const [targetPop] = await db.select({ id: pops.id }).from(pops).where(eq(pops.id, input.popId)).limit(1);
+      if (!targetPop) {
+        return NextResponse.json(
+          { code: 'NOT_FOUND', message: 'POP tidak ditemukan', timestamp: new Date().toISOString() },
+          { status: 404 }
+        );
+      }
+      targetPopId = targetPop.id;
+    } else {
+      if (!session.user.popId) return forbiddenResponse();
+      targetPopId = session.user.popId;
+    }
+
+    // super_admin hanya boleh dibuat oleh super_admin lain — administrator
+    // biasa tidak boleh mempromosikan siapa pun ke role lintas-POP ini.
+    if (input.role === 'super_admin' && !isSuperAdmin(session)) {
+      return forbiddenResponse();
+    }
+
     // Buat user + credential account (hash password) langsung lewat internal
     // adapter Better Auth. Sengaja TIDAK lewat auth.api.signUpEmail agar:
     //  - tidak butuh kode pendaftaran (ini pembuatan internal oleh admin),
@@ -150,11 +191,11 @@ export async function POST(req: NextRequest) {
       throw error;
     }
 
-    // Set role sesuai pilihan administrator (cocokkan lewat id, bukan email —
-    // email tersimpan lowercase sehingga pencocokan email mentah bisa meleset)
+    // Set role & popId sesuai pilihan administrator (cocokkan lewat id, bukan
+    // email — email tersimpan lowercase sehingga pencocokan email mentah bisa meleset)
     const updated = await db
       .update(user)
-      .set({ role: input.role, updatedAt: new Date() })
+      .set({ role: input.role, popId: targetPopId, updatedAt: new Date() })
       .where(eq(user.id, createdUser.id))
       .returning({
         id: user.id,

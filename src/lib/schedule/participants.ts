@@ -1,4 +1,4 @@
-import { asc, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { scheduleParticipants, user } from '@/lib/db/schema';
 import { ROLE_ORDER, SCHEDULABLE_ROLES } from '@/lib/schedule/roles';
@@ -23,13 +23,18 @@ const roleOrderSql = sql`CASE ${user.role} WHEN 'admin' THEN ${ROLE_ORDER.admin}
  * semua karyawan ber-role terjadwal — supaya instalasi yang sudah berjalan
  * tidak tiba-tiba kehilangan grid jadwalnya.
  */
-export async function listScheduleParticipants(): Promise<{
+export async function listScheduleParticipants(popId: string): Promise<{
   users: ScheduleParticipant[];
   configured: boolean;
 }> {
+  // "chosen" HARUS diperiksa per-POP (join ke user), bukan global — kalau
+  // tidak, POP lain yang sudah mengatur peserta akan membuat POP ini juga
+  // dianggap "configured" walau daftar pesertanya sendiri masih kosong.
   const chosen = await db
     .select({ userId: scheduleParticipants.userId })
-    .from(scheduleParticipants);
+    .from(scheduleParticipants)
+    .innerJoin(user, eq(user.id, scheduleParticipants.userId))
+    .where(eq(user.popId, popId));
 
   const columns = {
     id: user.id,
@@ -45,16 +50,19 @@ export async function listScheduleParticipants(): Promise<{
           .select(columns)
           .from(user)
           .where(
-            inArray(
-              user.id,
-              chosen.map((c) => c.userId)
+            and(
+              eq(user.popId, popId),
+              inArray(
+                user.id,
+                chosen.map((c) => c.userId)
+              )
             )
           )
           .orderBy(roleOrderSql, asc(user.name))
       : await db
           .select(columns)
           .from(user)
-          .where(inArray(user.role, [...SCHEDULABLE_ROLES]))
+          .where(and(eq(user.popId, popId), inArray(user.role, [...SCHEDULABLE_ROLES])))
           .orderBy(roleOrderSql, asc(user.name));
 
   return {

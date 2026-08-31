@@ -170,7 +170,7 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
 
         <p className={`relative flex items-center gap-2 text-sm ${hero.subtextDim}`}>
           <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-          KusumaVision · {year}
+          StarConnect · {year}
         </p>
       </aside>
 
@@ -200,7 +200,7 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
         <div className="relative w-full max-w-md animate-slide-up">{children}</div>
 
         <p className={`relative mt-8 text-center text-xs ${hero.subtextDim}`}>
-          KusumaVision · {year}
+          StarConnect · {year}
         </p>
       </div>
     </main>

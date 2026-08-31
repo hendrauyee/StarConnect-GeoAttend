@@ -7,6 +7,7 @@ import {
   geofences,
   leaveRequests,
   liveLocations,
+  pops,
   session as sessionTable,
   shiftSettings,
   user,
@@ -14,7 +15,7 @@ import {
 } from '@/lib/db/schema';
 import {
   getApiSession,
-  isAdmin,
+  isSuperAdmin,
   unauthorizedResponse,
   forbiddenResponse,
 } from '@/lib/auth/utils';
@@ -45,14 +46,18 @@ async function insertChunks<T>(
 
 /**
  * POST /api/admin/restore — pulihkan seluruh data dari file backup JSON.
- * PERINGATAN: menghapus semua data saat ini (termasuk session — semua pengguna
- * harus login ulang). Foto tidak ikut dipulihkan (file terpisah).
+ * PERINGATAN: menghapus SEMUA data di SEMUA POP saat ini (termasuk session —
+ * semua pengguna harus login ulang). Foto tidak ikut dipulihkan (file terpisah).
+ *
+ * super_admin SAJA — bukan administrator POP: operasi ini menghapus+menulis
+ * ulang seluruh tabel lintas-POP dalam satu transaksi, jadi tidak bisa
+ * dibatasi ke satu POP tanpa turut menghapus data POP lain.
  */
 export async function POST(req: NextRequest) {
   try {
     const session = await getApiSession(req);
     if (!session) return unauthorizedResponse();
-    if (!isAdmin(session)) return forbiddenResponse();
+    if (!isSuperAdmin(session)) return forbiddenResponse();
 
     const body = await req.json();
     const parsed = RestoreBackupSchema.safeParse(body);
@@ -69,8 +74,10 @@ export async function POST(req: NextRequest) {
 
     const { data } = parsed.data;
 
-    // Pastikan backup memuat minimal satu administrator (anti-lockout)
-    const hasAdministrator = data.users.some((row) => String(row.role) === 'administrator');
+    // Pastikan backup memuat minimal satu administrator/super_admin (anti-lockout)
+    const hasAdministrator = data.users.some((row) =>
+      ['administrator', 'super_admin'].includes(String(row.role))
+    );
     if (!hasAdministrator) {
       return NextResponse.json(
         {
@@ -82,6 +89,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const popRows = (data.pops ?? []).map((row) => ({
+      id: str(row, 'id'),
+      name: str(row, 'name'),
+      code: str(row, 'code'),
+      isActive: bool(row, 'isActive'),
+      createdAt: date(row, 'createdAt'),
+      updatedAt: date(row, 'updatedAt'),
+    }));
+
     const users = data.users.map((row) => ({
       id: str(row, 'id'),
       name: str(row, 'name'),
@@ -90,6 +106,7 @@ export async function POST(req: NextRequest) {
       image: strOrNull(row, 'image'),
       coverImage: strOrNull(row, 'coverImage'),
       role: str(row, 'role') || 'employee',
+      popId: strOrNull(row, 'popId'),
       createdAt: date(row, 'createdAt'),
       updatedAt: date(row, 'updatedAt'),
     }));
@@ -112,6 +129,7 @@ export async function POST(req: NextRequest) {
 
     const geofenceRows = data.geofences.map((row) => ({
       id: str(row, 'id'),
+      popId: str(row, 'popId'),
       name: str(row, 'name'),
       latitude: str(row, 'latitude'),
       longitude: str(row, 'longitude'),
@@ -123,6 +141,7 @@ export async function POST(req: NextRequest) {
 
     const shiftRows = data.shiftSettings.map((row) => ({
       id: str(row, 'id'),
+      popId: str(row, 'popId'),
       role: str(row, 'role'),
       shiftNumber: num(row, 'shiftNumber'),
       startTime: str(row, 'startTime'),
@@ -182,8 +201,10 @@ export async function POST(req: NextRequest) {
       await tx.delete(geofences);
       await tx.delete(shiftSettings);
       await tx.delete(appSettings);
+      await tx.delete(pops);
 
-      // Pulihkan dari backup
+      // Pulihkan dari backup (pops dulu — geofences/shiftSettings/users mereferensikannya)
+      if (popRows.length > 0) await insertChunks((rows) => tx.insert(pops).values(rows), popRows);
       if (users.length > 0) await insertChunks((rows) => tx.insert(user).values(rows), users);
       if (accounts.length > 0)
         await insertChunks((rows) => tx.insert(account).values(rows), accounts);

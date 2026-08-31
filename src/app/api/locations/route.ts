@@ -7,7 +7,9 @@ import {
   isAdmin,
   unauthorizedResponse,
   forbiddenResponse,
+  badRequestResponse,
 } from '@/lib/auth/utils';
+import { resolvePopScope } from '@/lib/auth/pop-scope';
 import { UpdateLocationSchema } from '@/types/api';
 import { haversineDistance } from '@/lib/geo/distance';
 import {
@@ -218,6 +220,10 @@ export async function GET(req: NextRequest) {
     if (!session) return unauthorizedResponse();
     if (!isAdmin(session)) return forbiddenResponse();
 
+    const scope = resolvePopScope(session, req);
+    if ('error' in scope) return scope.error;
+    if (!scope.popId) return badRequestResponse('Pilih POP terlebih dahulu');
+
     const rows = await db
       .select({
         userId: liveLocations.userId,
@@ -230,7 +236,8 @@ export async function GET(req: NextRequest) {
         userImage: user.image,
       })
       .from(liveLocations)
-      .leftJoin(user, eq(liveLocations.userId, user.id));
+      .innerJoin(user, eq(liveLocations.userId, user.id))
+      .where(eq(user.popId, scope.popId));
 
     return NextResponse.json({
       data: rows.map((row) => ({

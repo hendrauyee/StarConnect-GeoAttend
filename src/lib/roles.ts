@@ -9,13 +9,13 @@
  */
 export const WAREHOUSE_ROLE = 'gudang';
 
-/** Boleh kelola master stok (inventory): administrator sistem & admin gudang. */
+/** Boleh kelola master stok (inventory): administrator sistem, super_admin, & admin gudang. */
 export function isStockManager(role?: string | null): boolean {
-  return role === 'administrator' || role === WAREHOUSE_ROLE;
+  return role === 'administrator' || role === 'super_admin' || role === WAREHOUSE_ROLE;
 }
 
 /**
- * Akun web-only stok: hanya boleh login lewat stok.kusumavision.net —
+ * Akun web-only stok: hanya boleh login lewat stok.serayu.id —
  * tidak boleh masuk ke absensi (web) maupun aplikasi mobile.
  */
 export function isWarehouseOnly(role?: string | null): boolean {

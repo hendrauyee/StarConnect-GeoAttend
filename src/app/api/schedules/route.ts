@@ -7,7 +7,9 @@ import {
   isAdmin,
   unauthorizedResponse,
   forbiddenResponse,
+  badRequestResponse,
 } from '@/lib/auth/utils';
+import { resolvePopScope } from '@/lib/auth/pop-scope';
 import { UpsertScheduleSchema, type ScheduleShift } from '@/types/api';
 import { monthDates } from '@/lib/schedule/rotation';
 import { appMonth } from '@/lib/time';
@@ -44,8 +46,26 @@ export async function GET(req: NextRequest) {
     const start = dates[0];
     const end = dates[dates.length - 1];
 
+    // Daftar user hanya untuk tampilan grid administrator
+    let participants: Awaited<ReturnType<typeof listScheduleParticipants>> = {
+      users: [],
+      configured: false,
+    };
+    if (admin && !targetUserId) {
+      const scope = resolvePopScope(session, req);
+      if ('error' in scope) return scope.error;
+      if (!scope.popId) return badRequestResponse('Pilih POP terlebih dahulu');
+      participants = await listScheduleParticipants(scope.popId);
+    }
+
     const entryConds = [gte(scheduleEntries.date, start), lte(scheduleEntries.date, end)];
-    if (targetUserId) entryConds.push(eq(scheduleEntries.userId, targetUserId));
+    if (targetUserId) {
+      entryConds.push(eq(scheduleEntries.userId, targetUserId));
+    } else if (admin) {
+      // Grid penuh: batasi ke peserta POP ini saja (bukan seluruh tabel lintas-POP)
+      const ids = participants.users.map((u) => u.id);
+      entryConds.push(ids.length > 0 ? inArray(scheduleEntries.userId, ids) : eq(scheduleEntries.userId, ''));
+    }
 
     const entries = await db
       .select({
@@ -55,12 +75,6 @@ export async function GET(req: NextRequest) {
       })
       .from(scheduleEntries)
       .where(and(...entryConds));
-
-    // Daftar user hanya untuk tampilan grid administrator
-    const participants =
-      admin && !targetUserId
-        ? await listScheduleParticipants()
-        : { users: [], configured: false };
 
     return NextResponse.json({
       users: participants.users,
@@ -86,6 +100,10 @@ export async function PUT(req: NextRequest) {
     if (!session) return unauthorizedResponse();
     if (!isAdmin(session)) return forbiddenResponse();
 
+    const scope = resolvePopScope(session, req);
+    if ('error' in scope) return scope.error;
+    if (!scope.popId) return badRequestResponse('Pilih POP terlebih dahulu');
+
     const body = await req.json();
     const parsed = UpsertScheduleSchema.safeParse(body);
     if (!parsed.success) {
@@ -108,8 +126,8 @@ export async function PUT(req: NextRequest) {
     const end = dates[dates.length - 1];
     const validDates = new Set(dates);
 
-    // Hanya peserta jadwal yang boleh disimpan
-    const participants = await listScheduleParticipants();
+    // Hanya peserta jadwal (POP ini) yang boleh disimpan
+    const participants = await listScheduleParticipants(scope.popId);
     const roleByUser = new Map(participants.users.map((u) => [u.id, u.role]));
 
     // Dedupe (userId|date) — sel terakhir menang. Abaikan tanggal luar bulan,

@@ -110,7 +110,7 @@ mobile/
 ### 4.1 `app.json` (Expo)
 
 - **Identitas:** `name` GeoAttend, paket Android & bundle iOS
-  `net.kusumavision.geoattend`. Versi saat ini **1.13.0**.
+  `net.starconnect.geoattend`. Versi saat ini **1.13.0**.
 - **Izin Android:** `CAMERA`, `ACCESS_COARSE/FINE/BACKGROUND_LOCATION`,
   `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_LOCATION`, `RECEIVE_BOOT_COMPLETED`,
   `WAKE_LOCK`, `POST_NOTIFICATIONS`.
@@ -167,7 +167,7 @@ background tak dikenali saat OS membangunkannya.
 
 Satu fungsi `api<T>(path, init)` membungkus `fetch`:
 
-- **Base URL** dapat dikonfigurasi. Default `https://absensi.kusumavision.net`,
+- **Base URL** dapat dikonfigurasi. Default `https://absensi.serayu.id`,
   disimpan di AsyncStorage (`geoattend_server_url`), bisa diubah di layar login.
 - **Token bearer** disimpan di SecureStore (`geoattend_auth_token`); dikirim
   sebagai `Authorization: Bearer <token>`.

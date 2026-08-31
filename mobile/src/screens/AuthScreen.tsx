@@ -270,7 +270,7 @@ export function AuthScreen() {
           </Pressable>
         </Card>
 
-        <Text style={styles.footer}>KusumaVision</Text>
+        <Text style={styles.footer}>StarConnect</Text>
       </ScrollView>
 
       {/* Modal pengaturan server — kartu di ATAS layar agar tak tertutup keyboard */}
@@ -295,7 +295,7 @@ export function AuthScreen() {
               autoFocus
               autoCapitalize="none"
               keyboardType="url"
-              placeholder="https://absensi.kusumavision.net"
+              placeholder="https://absensi.serayu.id"
               hint="Ubah hanya bila diminta administrator"
             />
             <View style={{ flexDirection: 'row', gap: spacing.md }}>

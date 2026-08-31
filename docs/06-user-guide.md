@@ -123,7 +123,7 @@ Email login hanya bisa diubah oleh administrator.
 
 ### Stok Gudang
 Modul terpisah untuk stok barang & peralatan lapangan. Aplikasi dan loginnya
-sama, hanya tampilannya yang berganti sesuai alamat: **stok.kusumavision.net**
+sama, hanya tampilannya yang berganti sesuai alamat: **stok.serayu.id**
 (shell stok) atau sub-tab **Stok** di dalam GeoAttend. Menu **Inventory** hanya
 untuk administrator & admin gudang; menu lain terbuka bagi karyawan.
 

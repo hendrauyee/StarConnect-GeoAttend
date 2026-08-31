@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { scheduleEntries } from '@/lib/db/schema';
-import { getApiSession, unauthorizedResponse } from '@/lib/auth/utils';
+import { getApiSession, unauthorizedResponse, badRequestResponse } from '@/lib/auth/utils';
+import { resolvePopScope } from '@/lib/auth/pop-scope';
 import type { DayRosterMember, DayRosterResponse, ScheduleShift } from '@/types/api';
 import { listScheduleParticipants } from '@/lib/schedule/participants';
 import { appToday } from '@/lib/time';
@@ -38,7 +39,11 @@ export async function GET(req: NextRequest) {
     // Tanpa parameter → hari ini menurut WIB (bukan TZ host, yang di produksi UTC).
     const date = raw ?? appToday();
 
-    const { users } = await listScheduleParticipants();
+    const scope = resolvePopScope(session, req);
+    if ('error' in scope) return scope.error;
+    if (!scope.popId) return badRequestResponse('Pilih POP terlebih dahulu');
+
+    const { users } = await listScheduleParticipants(scope.popId);
     if (users.length === 0) {
       return NextResponse.json({ date, members: [] } satisfies DayRosterResponse);
     }

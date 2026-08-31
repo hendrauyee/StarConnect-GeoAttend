@@ -51,7 +51,7 @@ export function LoginForm({
     // Akun Admin Gudang hanya boleh di domain stok — batalkan sesi bila login dari absensi.
     if (isWarehouseOnly(role) && brand !== 'stok') {
       await signOut();
-      setError('Akun Admin Gudang hanya bisa masuk lewat stok.kusumavision.net');
+      setError('Akun Admin Gudang hanya bisa masuk lewat stok.serayu.id');
       return;
     }
 

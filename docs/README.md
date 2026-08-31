@@ -1,6 +1,6 @@
 # Dokumentasi GeoAttend
 
-Dokumentasi lengkap aplikasi absensi GeoAttend (KusumaVision).
+Dokumentasi lengkap aplikasi absensi GeoAttend (StarConnect).
 
 | Dokumen | Isi | Untuk Siapa |
 | :--- | :--- | :--- |

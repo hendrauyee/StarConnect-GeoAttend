@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { attendanceRecords, geofences, user } from '@/lib/db/schema';
-import { getApiSession, isAdmin, unauthorizedResponse, forbiddenResponse } from '@/lib/auth/utils';
+import {
+  getApiSession,
+  isAdmin,
+  isSuperAdmin,
+  unauthorizedResponse,
+  forbiddenResponse,
+} from '@/lib/auth/utils';
 import { ReviewOvertimeSchema } from '@/types/api';
 
 export const dynamic = 'force-dynamic';
@@ -21,6 +27,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         record: attendanceRecords,
         userName: user.name,
         userImage: user.image,
+        userPopId: user.popId,
         geofenceName: geofences.name,
       })
       .from(attendanceRecords)
@@ -37,7 +44,9 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       );
     }
 
-    if (!isAdmin(session) && row.record.userId !== session.user.id) {
+    const isOwnRecord = row.record.userId === session.user.id;
+    const isSamePopAdmin = isAdmin(session) && row.userPopId === session.user.popId;
+    if (!isOwnRecord && !isSamePopAdmin && !isSuperAdmin(session)) {
       return forbiddenResponse();
     }
 
@@ -102,8 +111,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         id: attendanceRecords.id,
         type: attendanceRecords.type,
         kind: attendanceRecords.kind,
+        userPopId: user.popId,
       })
       .from(attendanceRecords)
+      .leftJoin(user, eq(attendanceRecords.userId, user.id))
       .where(eq(attendanceRecords.id, params.id))
       .limit(1);
 
@@ -113,6 +124,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         { code: 'NOT_FOUND', message: 'Record tidak ditemukan', timestamp: new Date().toISOString() },
         { status: 404 }
       );
+    }
+    if (!isSuperAdmin(session) && record.userPopId !== session.user.popId) {
+      return forbiddenResponse();
     }
     if (record.kind !== 'lembur' || record.type !== 'clock_in') {
       return NextResponse.json(

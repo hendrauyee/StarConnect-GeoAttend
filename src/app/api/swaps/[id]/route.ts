@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { scheduleEntries, shiftSwapRequests } from '@/lib/db/schema';
+import { scheduleEntries, shiftSwapRequests, user } from '@/lib/db/schema';
 import {
   getApiSession,
   isAdmin,
+  isSuperAdmin,
   unauthorizedResponse,
   forbiddenResponse,
 } from '@/lib/auth/utils';
@@ -87,6 +88,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       if (updated[0].status === 'pending_admin') {
         notifyAdminSwapAwaitingReview({
           requesterId: swap.requesterId,
+          requesterPopId: session.user.popId ?? '',
           targetId: swap.targetId,
           kind: swap.kind,
           date: swap.date,
@@ -112,6 +114,14 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
     // --- Persetujuan administrator ---
     if (!isAdmin(session)) return forbiddenResponse();
+    if (!isSuperAdmin(session)) {
+      const [requesterRow] = await db
+        .select({ popId: user.popId })
+        .from(user)
+        .where(eq(user.id, swap.requesterId))
+        .limit(1);
+      if (!requesterRow || requesterRow.popId !== session.user.popId) return notFound();
+    }
     if (swap.status !== 'pending_admin') {
       return conflict('Pengajuan belum disetujui rekan atau sudah diproses');
     }
@@ -263,8 +273,10 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
         id: shiftSwapRequests.id,
         requesterId: shiftSwapRequests.requesterId,
         status: shiftSwapRequests.status,
+        requesterPopId: user.popId,
       })
       .from(shiftSwapRequests)
+      .innerJoin(user, eq(user.id, shiftSwapRequests.requesterId))
       .where(eq(shiftSwapRequests.id, params.id))
       .limit(1);
     if (!swap) return notFound();
@@ -273,6 +285,8 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
       const isOwner = swap.requesterId === session.user.id;
       const cancellable = swap.status === 'pending_peer' || swap.status === 'pending_admin';
       if (!isOwner || !cancellable) return forbiddenResponse();
+    } else if (!isSuperAdmin(session) && swap.requesterPopId !== session.user.popId) {
+      return notFound();
     }
 
     await db.delete(shiftSwapRequests).where(eq(shiftSwapRequests.id, params.id));

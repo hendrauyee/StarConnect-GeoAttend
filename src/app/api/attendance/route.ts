@@ -7,6 +7,7 @@ import {
   isAdmin,
   unauthorizedResponse,
 } from '@/lib/auth/utils';
+import { resolvePopScope } from '@/lib/auth/pop-scope';
 import { CreateAttendanceSchema, type AttendanceKind } from '@/types/api';
 import { checkGeofence } from '@/lib/geo/validation';
 import { pickShift } from '@/lib/shifts/calc';
@@ -41,6 +42,15 @@ export async function GET(req: NextRequest) {
     const conditions = [];
     if (userId) conditions.push(eq(attendanceRecords.userId, userId));
 
+    // Admin/super_admin melihat daftar (bukan satu userId spesifik): batasi ke
+    // POP yang sedang aktif — karyawan sendiri (userId sudah pasti) tidak perlu
+    // scoping tambahan karena sudah otomatis 1 POP lewat identitasnya sendiri.
+    if (isAdmin(session) && !userId) {
+      const scope = resolvePopScope(session, req);
+      if ('error' in scope) return scope.error;
+      if (scope.popId) conditions.push(eq(user.popId, scope.popId));
+    }
+
     if (params.get('today') === 'true') {
       const startOfDay = new Date();
       startOfDay.setHours(0, 0, 0, 0);
@@ -69,7 +79,11 @@ export async function GET(req: NextRequest) {
         .orderBy(desc(attendanceRecords.timestamp))
         .limit(limit)
         .offset((page - 1) * limit),
-      db.select({ total: count() }).from(attendanceRecords).where(where),
+      db
+        .select({ total: count() })
+        .from(attendanceRecords)
+        .leftJoin(user, eq(attendanceRecords.userId, user.id))
+        .where(where),
     ]);
 
     const total = totalResult[0]?.total ?? 0;
@@ -198,7 +212,12 @@ export async function POST(req: NextRequest) {
             endTime: shiftSettings.endTime,
           })
           .from(shiftSettings)
-          .where(eq(shiftSettings.role, session.user.role ?? ''));
+          .where(
+            and(
+              eq(shiftSettings.role, session.user.role ?? ''),
+              eq(shiftSettings.popId, session.user.popId ?? '')
+            )
+          );
 
     let shiftNumber: number | null = null;
     if (roleShifts.length > 0) {
@@ -221,11 +240,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Validasi geofence
+    // Validasi geofence — SELALU milik POP karyawan sendiri, bukan geofence
+    // POP lain manapun (sebelumnya bug: `.limit(1)` global tanpa scoping).
     const activeGeofences = await db
       .select()
       .from(geofences)
-      .where(eq(geofences.isActive, true))
+      .where(and(eq(geofences.isActive, true), eq(geofences.popId, session.user.popId ?? '')))
       .limit(1);
 
     const geofence = activeGeofences[0]

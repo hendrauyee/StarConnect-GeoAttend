@@ -201,7 +201,7 @@ export function buildRecapHtml(recap: RecapResponse, printedAt: string): string 
     <p class="foot">
       Lembur = datang lebih awal / pulang lebih larut dari jam shift. Lembur urgent
       (panggilan di luar shift) dihitung terpisah dan baru masuk total setelah
-      disetujui admin. Dibuat otomatis oleh GeoAttend · KusumaVision.
+      disetujui admin. Dibuat otomatis oleh GeoAttend · StarConnect.
     </p>
   </body>
 </html>`;

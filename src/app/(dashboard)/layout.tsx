@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { getServerSession } from '@/lib/auth/utils';
+import { getServerSession, isAdmin as isAdminSession } from '@/lib/auth/utils';
 import { getAppSettings } from '@/lib/settings';
 import { getServerBrand } from '@/lib/brand.server';
 import { brandConfig } from '@/lib/brand';
@@ -26,7 +26,8 @@ export default async function DashboardLayout({
     redirect('/login?reason=expired');
   }
 
-  const isAdmin = session.user.role === 'administrator';
+  const isAdmin = isAdminSession(session);
+  const isSuperAdmin = session.user.role === 'super_admin';
   const appSettings = await getAppSettings();
   const brand = getServerBrand();
   const cfg = brandConfig(brand, appSettings.appName);
@@ -47,7 +48,12 @@ export default async function DashboardLayout({
             canManage={isStockManager(session.user.role)}
           />
         ) : (
-          <DesktopSidebar isAdmin={isAdmin} appName={appSettings.appName} logoUrl={appSettings.logoUrl} />
+          <DesktopSidebar
+            isAdmin={isAdmin}
+            isSuperAdmin={isSuperAdmin}
+            appName={appSettings.appName}
+            logoUrl={appSettings.logoUrl}
+          />
         )}
         <div className="flex min-w-0 flex-1 flex-col">
           <Header

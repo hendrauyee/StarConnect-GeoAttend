@@ -7,7 +7,9 @@ import {
   isAdmin,
   unauthorizedResponse,
   forbiddenResponse,
+  badRequestResponse,
 } from '@/lib/auth/utils';
+import { resolvePopScope } from '@/lib/auth/pop-scope';
 import { UpsertPiketSchema, MarkPiketDoneSchema, type PiketAssignment } from '@/types/api';
 import { monthDates } from '@/lib/schedule/rotation';
 import { appMonth } from '@/lib/time';
@@ -23,6 +25,11 @@ export async function GET(req: NextRequest) {
   try {
     const session = await getApiSession(req);
     if (!session) return unauthorizedResponse();
+
+    const scope = resolvePopScope(session, req);
+    if ('error' in scope) return scope.error;
+    if (!scope.popId) return badRequestResponse('Pilih POP terlebih dahulu');
+    const popId = scope.popId;
 
     const month = req.nextUrl.searchParams.get('month') ?? appMonth();
     if (!/^\d{4}-\d{2}$/.test(month)) {
@@ -46,7 +53,13 @@ export async function GET(req: NextRequest) {
       })
       .from(piketAssignments)
       .leftJoin(user, eq(piketAssignments.userId, user.id))
-      .where(and(gte(piketAssignments.date, start), lte(piketAssignments.date, end)));
+      .where(
+        and(
+          eq(piketAssignments.popId, popId),
+          gte(piketAssignments.date, start),
+          lte(piketAssignments.date, end)
+        )
+      );
 
     const assignments: PiketAssignment[] = rows.map((r) => ({
       date: r.date,
@@ -57,7 +70,7 @@ export async function GET(req: NextRequest) {
     }));
 
     // Kandidat piket = peserta jadwal shift (dikelola administrator)
-    const users = isAdmin(session) ? (await listScheduleParticipants()).users : [];
+    const users = isAdmin(session) ? (await listScheduleParticipants(popId)).users : [];
 
     return NextResponse.json({ users, assignments });
   } catch (error) {
@@ -79,6 +92,11 @@ export async function PUT(req: NextRequest) {
     if (!session) return unauthorizedResponse();
     if (!isAdmin(session)) return forbiddenResponse();
 
+    const scope = resolvePopScope(session, req);
+    if ('error' in scope) return scope.error;
+    if (!scope.popId) return badRequestResponse('Pilih POP terlebih dahulu');
+    const popId = scope.popId;
+
     const body = await req.json();
     const parsed = UpsertPiketSchema.safeParse(body);
     if (!parsed.success) {
@@ -93,7 +111,7 @@ export async function PUT(req: NextRequest) {
     const validDates = new Set(dates);
 
     const schedulableIds = new Set(
-      (await listScheduleParticipants()).users.map((u) => u.id)
+      (await listScheduleParticipants(popId)).users.map((u) => u.id)
     );
 
     // Dedupe per tanggal; abaikan tanggal luar bulan / user non-jadwal
@@ -106,23 +124,31 @@ export async function PUT(req: NextRequest) {
     const existing = await db
       .select({ date: piketAssignments.date, userId: piketAssignments.userId })
       .from(piketAssignments)
-      .where(and(gte(piketAssignments.date, dates[0]), lte(piketAssignments.date, dates[dates.length - 1])));
+      .where(
+        and(
+          eq(piketAssignments.popId, popId),
+          gte(piketAssignments.date, dates[0]),
+          lte(piketAssignments.date, dates[dates.length - 1])
+        )
+      );
     const existingMap = new Map(existing.map((e) => [e.date, e.userId]));
 
     await db.transaction(async (tx) => {
-      // Hapus tanggal yang tak lagi ada di payload
+      // Hapus tanggal yang tak lagi ada di payload (POP ini saja)
       const removed = existing.filter((e) => !dedup.has(e.date)).map((e) => e.date);
       if (removed.length > 0) {
-        await tx.delete(piketAssignments).where(inArray(piketAssignments.date, removed));
+        await tx
+          .delete(piketAssignments)
+          .where(and(eq(piketAssignments.popId, popId), inArray(piketAssignments.date, removed)));
       }
       // Upsert
       for (const [date, userId] of Array.from(dedup.entries())) {
         if (existingMap.get(date) === userId) continue; // tak berubah
         await tx
           .insert(piketAssignments)
-          .values({ date, userId, done: false })
+          .values({ popId, date, userId, done: false })
           .onConflictDoUpdate({
-            target: piketAssignments.date,
+            target: [piketAssignments.popId, piketAssignments.date],
             set: { userId, done: false, doneAt: null, updatedAt: new Date() },
           });
       }
@@ -146,6 +172,7 @@ export async function PATCH(req: NextRequest) {
   try {
     const session = await getApiSession(req);
     if (!session) return unauthorizedResponse();
+    if (!session.user.popId) return forbiddenResponse();
 
     const body = await req.json();
     const parsed = MarkPiketDoneSchema.safeParse(body);
@@ -160,7 +187,7 @@ export async function PATCH(req: NextRequest) {
     const [assignment] = await db
       .select({ userId: piketAssignments.userId })
       .from(piketAssignments)
-      .where(eq(piketAssignments.date, date))
+      .where(and(eq(piketAssignments.popId, session.user.popId), eq(piketAssignments.date, date)))
       .limit(1);
     if (!assignment) {
       return NextResponse.json(
@@ -173,7 +200,7 @@ export async function PATCH(req: NextRequest) {
     await db
       .update(piketAssignments)
       .set({ done, doneAt: done ? new Date() : null, updatedAt: new Date() })
-      .where(eq(piketAssignments.date, date));
+      .where(and(eq(piketAssignments.popId, session.user.popId), eq(piketAssignments.date, date)));
 
     return NextResponse.json({ data: { date, done } });
   } catch (error) {

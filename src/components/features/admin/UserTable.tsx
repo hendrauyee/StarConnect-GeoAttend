@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pencil, Search, Trash2, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
@@ -16,7 +17,7 @@ import { Select } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar } from '@/components/ui/avatar';
 
-const ROLE_OPTIONS: { value: UserProfile['role']; label: string }[] = [
+const BASE_ROLE_OPTIONS: { value: UserProfile['role']; label: string }[] = [
   { value: 'employee', label: 'Karyawan' },
   { value: 'teknisi', label: 'Teknisi' },
   { value: 'noc', label: 'NOC' },
@@ -24,36 +25,65 @@ const ROLE_OPTIONS: { value: UserProfile['role']; label: string }[] = [
   { value: 'gudang', label: 'Admin Gudang (web stok)' },
   { value: 'administrator', label: 'Administrator (sistem)' },
 ];
+/** super_admin hanya boleh dipilih/dilihat oleh viewer yang sudah super_admin. */
+const SUPER_ADMIN_OPTION = { value: 'super_admin' as const, label: 'Super Admin (lintas-POP)' };
 
 const EMPTY_NEW_USER = {
   name: '',
   email: '',
   password: '',
   role: 'employee' as UserProfile['role'],
+  popId: '',
 };
 
-async function fetchUsers(search: string): Promise<{ data: UserProfile[] }> {
+interface PopOption {
+  id: string;
+  name: string;
+}
+
+async function fetchUsers(search: string, popId: string | null): Promise<{ data: UserProfile[] }> {
   const params = new URLSearchParams();
   if (search) params.set('search', search);
+  if (popId) params.set('popId', popId);
   const res = await fetch(`/api/users?${params}`);
   if (!res.ok) throw new Error('Gagal memuat daftar pengguna');
+  return res.json();
+}
+
+async function fetchPops(): Promise<{ data: PopOption[] }> {
+  const res = await fetch('/api/pops');
+  if (!res.ok) throw new Error('Gagal memuat daftar POP');
   return res.json();
 }
 
 export function UserTable() {
   const queryClient = useQueryClient();
   const { data: session } = useSession();
+  const isSuperAdmin = session?.user.role === 'super_admin';
+  const activePopId = useSearchParams().get('popId');
+  const roleOptions = isSuperAdmin ? [...BASE_ROLE_OPTIONS, SUPER_ADMIN_OPTION] : BASE_ROLE_OPTIONS;
+
   const [search, setSearch] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<UserProfile | null>(null);
   const [addOpen, setAddOpen] = useState(false);
-  const [newUser, setNewUser] = useState(EMPTY_NEW_USER);
+  const [newUser, setNewUser] = useState({ ...EMPTY_NEW_USER, popId: activePopId ?? '' });
   const [editTarget, setEditTarget] = useState<UserProfile | null>(null);
   const [editForm, setEditForm] = useState({ name: '', email: '', password: '' });
 
+  const needsPopSelection = isSuperAdmin && !activePopId;
+
   const { data, isLoading } = useQuery({
-    queryKey: ['users', search],
-    queryFn: () => fetchUsers(search),
+    queryKey: ['users', search, activePopId],
+    queryFn: () => fetchUsers(search, activePopId),
+    enabled: !needsPopSelection,
   });
+
+  const { data: popsData } = useQuery({
+    queryKey: ['pops'],
+    queryFn: fetchPops,
+    enabled: isSuperAdmin,
+  });
+  const popOptions = popsData?.data ?? [];
 
   const updateRole = useMutation({
     mutationFn: async ({ id, role }: { id: string; role: UserProfile['role'] }) => {
@@ -90,19 +120,26 @@ export function UserTable() {
 
   const createUser = useMutation({
     mutationFn: async (input: typeof EMPTY_NEW_USER) => {
+      // popId hanya dikirim untuk super_admin — administrator biasa tidak
+      // boleh mengirim field ini sama sekali (server memaksa popId miliknya
+      // sendiri; zod menolak string kosong bila field ini ikut terkirim).
+      const { popId, ...rest } = input;
+      const body: Record<string, unknown> = { ...rest };
+      if (isSuperAdmin && popId) body.popId = popId;
+
       const res = await fetch('/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
+        body: JSON.stringify(body),
       });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body?.message ?? 'Gagal membuat pengguna');
-      return body as UserProfile;
+      const resBody = await res.json();
+      if (!res.ok) throw new Error(resBody?.message ?? 'Gagal membuat pengguna');
+      return resBody as UserProfile;
     },
     onSuccess: (created) => {
       toast.success(`Akun ${created.name} berhasil dibuat`);
       setAddOpen(false);
-      setNewUser(EMPTY_NEW_USER);
+      setNewUser({ ...EMPTY_NEW_USER, popId: activePopId ?? '' });
       queryClient.invalidateQueries({ queryKey: ['users'] });
     },
     onError: (err: Error) => toast.error(err.message),
@@ -139,6 +176,10 @@ export function UserTable() {
     e.preventDefault();
     if (newUser.password.length < 8) {
       toast.error('Kata sandi minimal 8 karakter');
+      return;
+    }
+    if (isSuperAdmin && !newUser.popId) {
+      toast.error('Pilih POP tujuan akun ini');
       return;
     }
     createUser.mutate(newUser);
@@ -189,7 +230,11 @@ export function UserTable() {
         </Button>
       </div>
 
-      {isLoading ? (
+      {needsPopSelection ? (
+        <p className="py-10 text-center text-sm text-text-secondary">
+          Pilih POP dulu lewat menu &quot;Kelola POP&quot; untuk melihat/menambah penggunanya
+        </p>
+      ) : isLoading ? (
         <div className="flex flex-col gap-2">
           <Skeleton className="h-16 w-full" />
           <Skeleton className="h-16 w-full" />
@@ -251,7 +296,7 @@ export function UserTable() {
                         aria-label={`Role untuk ${user.name}`}
                         className="h-9 w-auto min-w-[11rem]"
                       >
-                        {ROLE_OPTIONS.map((option) => (
+                        {roleOptions.map((option) => (
                           <option key={option.value} value={option.value}>
                             {option.label}
                           </option>
@@ -335,13 +380,34 @@ export function UserTable() {
                 setNewUser((u) => ({ ...u, role: e.target.value as UserProfile['role'] }))
               }
             >
-              {ROLE_OPTIONS.map((option) => (
+              {roleOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
               ))}
             </Select>
           </div>
+
+          {isSuperAdmin && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="nu-pop">POP</Label>
+              <Select
+                id="nu-pop"
+                value={newUser.popId}
+                onChange={(e) => setNewUser((u) => ({ ...u, popId: e.target.value }))}
+                required
+              >
+                <option value="" disabled>
+                  Pilih POP...
+                </option>
+                {popOptions.map((pop) => (
+                  <option key={pop.id} value={pop.id}>
+                    {pop.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
 
           <div className="mt-2 flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => setAddOpen(false)}>
@@ -353,7 +419,8 @@ export function UserTable() {
               disabled={
                 newUser.name.trim().length === 0 ||
                 newUser.email.trim().length === 0 ||
-                newUser.password.length === 0
+                newUser.password.length === 0 ||
+                (isSuperAdmin && !newUser.popId)
               }
             >
               Buat Akun

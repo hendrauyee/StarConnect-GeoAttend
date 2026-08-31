@@ -101,11 +101,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           500
         );
       }
-      // Akun Admin Gudang hanya untuk web stok.kusumavision.net — tolak di mobile.
+      // Akun Admin Gudang hanya untuk web stok.serayu.id — tolak di mobile.
       if (res.user?.role === 'gudang') {
         await setToken(null);
         throw new ApiRequestError(
-          'Akun Admin Gudang hanya bisa dipakai di web stok.kusumavision.net, bukan aplikasi mobile.',
+          'Akun Admin Gudang hanya bisa dipakai di web stok.serayu.id, bukan aplikasi mobile.',
           403,
           'WAREHOUSE_WEB_ONLY'
         );

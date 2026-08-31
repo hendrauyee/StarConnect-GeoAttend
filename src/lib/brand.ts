@@ -1,7 +1,7 @@
 /**
  * Identitas aplikasi berdasarkan domain (satu app, dua wajah):
- * - `geoattend` → absensi.kusumavision.net (dan tunnel dev)
- * - `stok`      → stok.kusumavision.net
+ * - `geoattend` → absensi.serayu.id (dan tunnel dev)
+ * - `stok`      → stok.serayu.id
  *
  * Modul ini MURNI (tanpa next/headers) agar aman dipakai di client & middleware.
  * Untuk resolusi di Server Component, pakai `getServerBrand()` dari `brand.server`.
@@ -13,7 +13,7 @@ const STOCK_HOSTS = (process.env.NEXT_PUBLIC_STOCK_HOSTS ?? '')
   .map((s) => s.trim().toLowerCase())
   .filter(Boolean);
 
-/** Tentukan brand dari hostname (mis. "stok.kusumavision.net"). */
+/** Tentukan brand dari hostname (mis. "stok.serayu.id"). */
 export function resolveBrand(host: string | null | undefined): Brand {
   const h = (host ?? '').toLowerCase().split(':')[0];
   if (!h) return 'geoattend';
@@ -32,7 +32,7 @@ export interface BrandConfig {
   loginSubtitle: string;
 }
 
-const STOCK_NAME = process.env.NEXT_PUBLIC_STOCK_APP_NAME ?? 'Kusuma Vision · Stok';
+const STOCK_NAME = process.env.NEXT_PUBLIC_STOCK_APP_NAME ?? 'StarConnect · Stok';
 
 /** Konfigurasi tampilan per brand. `geoattendName` = appName dari pengaturan. */
 export function brandConfig(brand: Brand, geoattendName = 'GeoAttend'): BrandConfig {

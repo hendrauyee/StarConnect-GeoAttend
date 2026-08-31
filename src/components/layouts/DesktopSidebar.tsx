@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
+  Building2,
   CalendarClock,
   CalendarDays,
   CalendarRange,
@@ -22,11 +23,17 @@ import { APP_NAME, APP_VERSION } from '@/lib/constants';
 
 interface DesktopSidebarProps {
   isAdmin: boolean;
+  isSuperAdmin?: boolean;
   appName?: string;
   logoUrl?: string | null;
 }
 
-export function DesktopSidebar({ isAdmin, appName = APP_NAME, logoUrl }: DesktopSidebarProps) {
+export function DesktopSidebar({
+  isAdmin,
+  isSuperAdmin = false,
+  appName = APP_NAME,
+  logoUrl,
+}: DesktopSidebarProps) {
   const pathname = usePathname();
 
   const mainItems = [
@@ -45,6 +52,7 @@ export function DesktopSidebar({ isAdmin, appName = APP_NAME, logoUrl }: Desktop
     { href: '/admin/schedule', label: 'Jadwal Shift', icon: CalendarClock },
     { href: '/admin/users', label: 'Pengguna', icon: Users },
     { href: '/admin/settings', label: 'Pengaturan', icon: Settings },
+    ...(isSuperAdmin ? [{ href: '/admin/pops', label: 'Kelola POP', icon: Building2 }] : []),
   ];
 
   const renderItem = (item: { href: string; label: string; icon: typeof Camera }) => {
@@ -113,7 +121,7 @@ export function DesktopSidebar({ isAdmin, appName = APP_NAME, logoUrl }: Desktop
       </nav>
 
       <p className="shrink-0 border-t border-border/70 px-5 py-3 text-[11px] text-text-secondary/70">
-        {appName} v{APP_VERSION} · KusumaVision
+        {appName} v{APP_VERSION} · StarConnect
       </p>
     </aside>
   );

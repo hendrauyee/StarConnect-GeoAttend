@@ -5,6 +5,7 @@ import { attendanceRecords, geofences, locationTrails, user } from '@/lib/db/sch
 import {
   getApiSession,
   isAdmin,
+  isSuperAdmin,
   unauthorizedResponse,
   forbiddenResponse,
 } from '@/lib/auth/utils';
@@ -72,6 +73,13 @@ export async function GET(req: NextRequest) {
         'Parameter userId dan date (yyyy-MM-dd) wajib diisi',
         400
       );
+    }
+
+    if (!isSuperAdmin(session)) {
+      const [target] = await db.select({ popId: user.popId }).from(user).where(eq(user.id, userId)).limit(1);
+      if (!target || target.popId !== session.user.popId) {
+        return errorResponse('NOT_FOUND', 'Pengguna tidak ditemukan', 404);
+      }
     }
 
     // Sesi bisa melintasi tengah malam di kedua arah, jadi ambil absensi

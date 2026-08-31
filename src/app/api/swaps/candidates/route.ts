@@ -68,6 +68,7 @@ export async function GET(req: NextRequest) {
           and(
             eq(scheduleEntries.date, date),
             eq(user.role, role),
+            eq(user.popId, session.user.popId ?? ''),
             ne(user.id, session.user.id),
             inArray(scheduleEntries.shift, ['1', '2'])
           )
@@ -138,6 +139,7 @@ export async function GET(req: NextRequest) {
         and(
           eq(scheduleEntries.date, date),
           eq(user.role, role),
+          eq(user.popId, session.user.popId ?? ''),
           ne(user.id, session.user.id),
           inArray(scheduleEntries.shift, ['1', '2']),
           ne(scheduleEntries.shift, requesterShift)

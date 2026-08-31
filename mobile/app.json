@@ -8,7 +8,7 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "net.kusumavision.geoattend",
+      "bundleIdentifier": "net.starconnect.geoattend",
       "infoPlist": {
         "NSCameraUsageDescription": "Kamera dipakai untuk foto bukti absensi.",
         "NSLocationWhenInUseUsageDescription": "Lokasi dipakai untuk validasi area absensi.",
@@ -16,8 +16,7 @@
       }
     },
     "android": {
-      "package": "net.kusumavision.geoattend",
-      "googleServicesFile": "./google-services.json",
+      "package": "net.starconnect.geoattend",
       "adaptiveIcon": {
         "backgroundColor": "#2563EB",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -69,7 +68,9 @@
         {
           "android": {
             "enableProguardInReleaseBuilds": true,
-            "enableShrinkResourcesInReleaseBuilds": true
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "enableMinifyInReleaseBuilds": true,
+            "usesCleartextTraffic": true
           }
         }
       ],
@@ -84,9 +85,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "2c3a7f73-74bd-47dd-94fb-2fe88e79cdd7"
+        "projectId": "19999198-644e-454c-bf32-00cb9182b524"
       }
     },
-    "owner": "masamune21s-team"
+    "owner": "serayumc"
   }
 }

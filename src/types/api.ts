@@ -45,7 +45,7 @@ export const UpdateGeofenceSchema = z.object({
 export type UpdateGeofenceInput = z.infer<typeof UpdateGeofenceSchema>;
 
 export const UpdateUserSchema = z.object({
-  role: z.enum(['administrator', 'admin', 'noc', 'teknisi', 'employee', 'gudang']).optional(),
+  role: z.enum(['super_admin', 'administrator', 'admin', 'noc', 'teknisi', 'employee', 'gudang']).optional(),
   name: z.string().min(1).max(255).optional(),
   email: z.string().email('Format email tidak valid').optional(),
   password: z.string().min(8, 'Kata sandi minimal 8 karakter').optional(),
@@ -84,6 +84,7 @@ export const ResetDataSchema = z.object({
 export const RestoreBackupSchema = z.object({
   version: z.literal(1),
   data: z.object({
+    pops: z.array(z.record(z.unknown())).optional(),
     users: z.array(z.record(z.unknown())),
     accounts: z.array(z.record(z.unknown())),
     geofences: z.array(z.record(z.unknown())),
@@ -98,7 +99,9 @@ export const CreateUserSchema = z.object({
   name: z.string().min(1).max(255),
   email: z.string().email('Format email tidak valid'),
   password: z.string().min(8, 'Kata sandi minimal 8 karakter'),
-  role: z.enum(['administrator', 'admin', 'noc', 'teknisi', 'employee', 'gudang']),
+  role: z.enum(['super_admin', 'administrator', 'admin', 'noc', 'teknisi', 'employee', 'gudang']),
+  /** Hanya dipakai/divalidasi bila pembuat adalah super_admin — administrator biasa selalu dipaksa ke popId miliknya sendiri. */
+  popId: z.string().uuid().optional(),
 });
 export type CreateUserInput = z.infer<typeof CreateUserSchema>;
 
@@ -224,7 +227,7 @@ export interface UserProfile {
   id: string;
   name: string;
   email: string;
-  role: 'administrator' | 'admin' | 'noc' | 'teknisi' | 'employee' | 'gudang';
+  role: 'super_admin' | 'administrator' | 'admin' | 'noc' | 'teknisi' | 'employee' | 'gudang';
   image?: string | null;
   /** Tim jaga lembur malam (khusus teknisi) */
   technicianTeam?: TechnicianTeam | null;

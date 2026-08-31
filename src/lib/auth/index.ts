@@ -81,6 +81,11 @@ export const auth = betterAuth({
         required: false,
         input: false, // di-set administrator dari halaman Jadwal
       },
+      popId: {
+        type: 'string',
+        required: false,
+        input: false, // NULL untuk super_admin; di-set server saat pembuatan user
+      },
     },
   },
   session: {

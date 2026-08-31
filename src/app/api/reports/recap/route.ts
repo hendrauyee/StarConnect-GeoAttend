@@ -9,7 +9,7 @@ import {
   shiftSettings,
   user,
 } from '@/lib/db/schema';
-import { getApiSession, isAdmin, unauthorizedResponse } from '@/lib/auth/utils';
+import { getApiSession, isAdmin, isSuperAdmin, unauthorizedResponse } from '@/lib/auth/utils';
 import { toAttendanceResponse } from '@/lib/attendance/serialize';
 import { buildRecap, emptySummary, type RecapResponse } from '@/lib/reports/recap';
 import { monthDates } from '@/lib/schedule/rotation';
@@ -59,11 +59,11 @@ export async function GET(req: NextRequest) {
       !isAdmin(session) || !requested || requested === 'self' ? session.user.id : requested;
 
     const [target] = await db
-      .select({ id: user.id, name: user.name, role: user.role })
+      .select({ id: user.id, name: user.name, role: user.role, popId: user.popId })
       .from(user)
       .where(eq(user.id, targetUserId))
       .limit(1);
-    if (!target) {
+    if (!target || (!isSuperAdmin(session) && targetUserId !== session.user.id && target.popId !== session.user.popId)) {
       return NextResponse.json(
         { code: 'NOT_FOUND', message: 'Pengguna tidak ditemukan', timestamp: new Date().toISOString() },
         { status: 404 }
@@ -104,7 +104,8 @@ export async function GET(req: NextRequest) {
           startTime: shiftSettings.startTime,
           endTime: shiftSettings.endTime,
         })
-        .from(shiftSettings),
+        .from(shiftSettings)
+        .where(eq(shiftSettings.popId, target.popId ?? '')),
       db
         .select({ leave: leaveRequests })
         .from(leaveRequests)

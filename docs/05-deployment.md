@@ -74,7 +74,7 @@ systemctl enable --now geoattend
 ```bash
 export DB_PASSWORD=<kuat>
 export BETTER_AUTH_SECRET=$(openssl rand -base64 32)
-export APP_URL=https://absensi.kusumavision.net
+export APP_URL=https://absensi.serayu.id
 docker compose --profile production up -d --build
 ```
 
@@ -89,7 +89,7 @@ Kamera & GPS browser hanya berfungsi di `localhost` atau **HTTPS**. Opsi:
 ```nginx
 server {
   listen 443 ssl http2;
-  server_name absensi.kusumavision.net;
+  server_name absensi.serayu.id;
   ssl_certificate     /etc/letsencrypt/live/absensi.../fullchain.pem;
   ssl_certificate_key /etc/letsencrypt/live/absensi.../privkey.pem;
   client_max_body_size 10m;          # foto base64

@@ -6,7 +6,7 @@ dengan versi web ([docs/02-api.md](../docs/02-api.md)) memakai **bearer token**
 
 ## Fitur
 
-- Login dengan alamat server yang bisa diubah (default: `https://absensi.kusumavision.net`)
+- Login dengan alamat server yang bisa diubah (default: `https://absensi.serayu.id`)
 - Absen masuk/pulang: foto kamera (wajib), validasi jarak geofence real-time, pilihan shift
 - **Pelacakan posisi background** — berjalan walau HP di saku, selama status hadir;
   berhenti otomatis saat absen pulang / server menolak (`NOT_CLOCKED_IN`)
@@ -71,7 +71,7 @@ karyawan (izinkan "install dari sumber tidak dikenal").
 
 | Profil | Server |
 | :--- | :--- |
-| Default APK | `https://absensi.kusumavision.net` (server kantor) |
+| Default APK | `https://absensi.serayu.id` (server kantor) |
 | Demo/staging | Ubah dari app: layar login → **Pengaturan server** → isi `https://absensi.masamune.my.id` |
 
 Alamat tersimpan per perangkat — tidak perlu build ulang saat pindah server.
@@ -79,7 +79,7 @@ Alamat tersimpan per perangkat — tidak perlu build ulang saat pindah server.
 ## Checklist server agar mobile berfungsi
 
 - [x] Plugin `bearer` Better Auth aktif (`src/lib/auth/index.ts`)
-- [ ] Server produksi HTTPS (`absensi.kusumavision.net`) — lihat [docs/05-deployment.md](../docs/05-deployment.md)
+- [ ] Server produksi HTTPS (`absensi.serayu.id`) — lihat [docs/05-deployment.md](../docs/05-deployment.md)
 - [ ] `BETTER_AUTH_URL` + `BETTER_AUTH_TRUSTED_ORIGINS` di-set di server
 - [ ] Akun karyawan sudah dibuat (via admin atau kode pendaftaran di web)
 

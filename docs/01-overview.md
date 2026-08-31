@@ -95,7 +95,7 @@ basis data, satu login.
 ## Struktur Proyek
 
 ```
-KusumaVisionAbsensi/
+GeoAttend/
 ├── docs/                       # Dokumentasi (folder ini)
 ├── docker-compose.yml          # db (default) + app (profile: production)
 ├── Dockerfile                  # Multi-stage build Next.js standalone

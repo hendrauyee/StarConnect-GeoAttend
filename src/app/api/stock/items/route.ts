@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { stockItems } from '@/lib/db/schema';
-import { forbiddenResponse, getApiSession, unauthorizedResponse } from '@/lib/auth/utils';
+import { forbiddenResponse, getApiSession, unauthorizedResponse, badRequestResponse } from '@/lib/auth/utils';
+import { resolvePopScope } from '@/lib/auth/pop-scope';
 import { isStockManager } from '@/lib/roles';
 import { getStockItems, getStockItemById } from '@/lib/stock';
 import { saveStockPhoto } from '@/lib/storage/local-fs';
@@ -20,8 +21,13 @@ export async function GET(req: NextRequest) {
     const session = await getApiSession(req);
     if (!session) return unauthorizedResponse();
 
+    const scope = resolvePopScope(session, req);
+    if ('error' in scope) return scope.error;
+    if (!scope.popId) return badRequestResponse('Pilih POP terlebih dahulu');
+
     const params = req.nextUrl.searchParams;
     const data = await getStockItems({
+      popId: scope.popId,
       activeOnly: params.get('includeInactive') !== '1',
       categoryId: params.get('categoryId') ?? undefined,
       search: params.get('search')?.trim() || undefined,
@@ -39,6 +45,11 @@ export async function POST(req: NextRequest) {
     if (!session) return unauthorizedResponse();
     if (!isStockManager(session.user.role)) return forbiddenResponse();
 
+    const scope = resolvePopScope(session, req);
+    if ('error' in scope) return scope.error;
+    if (!scope.popId) return badRequestResponse('Pilih POP terlebih dahulu');
+    const popId = scope.popId;
+
     const parsed = CreateStockItemSchema.safeParse(await req.json());
     if (!parsed.success) return validationError(parsed.error.flatten());
     const input = parsed.data;
@@ -49,6 +60,7 @@ export async function POST(req: NextRequest) {
       const [row] = await db
         .insert(stockItems)
         .values({
+          popId,
           code: input.code.trim(),
           name: input.name.trim(),
           categoryId: input.categoryId ?? null,
@@ -59,7 +71,7 @@ export async function POST(req: NextRequest) {
         })
         .returning({ id: stockItems.id });
 
-      const created = await getStockItemById(row.id);
+      const created = await getStockItemById(row.id, popId);
       return NextResponse.json(created, { status: 201 });
     } catch (err) {
       if (isUniqueViolation(err)) return errorJson('DUPLICATE', 'Kode barang sudah dipakai', 409);

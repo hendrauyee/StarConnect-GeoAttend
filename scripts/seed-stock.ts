@@ -14,6 +14,8 @@ config({ path: '.env.local' });
 
 const CSV_PATH = path.resolve(__dirname, 'data/stock-seed.csv');
 const DEFAULT_MIN_STOCK = Number(process.env.STOCK_DEFAULT_MIN ?? 5);
+/** POP tujuan import — default POP yang dibuat scripts/seed.ts. */
+const TARGET_POP_CODE = process.env.STOCK_SEED_POP_CODE ?? 'DEFAULT';
 
 /** Parser CSV minimal: mendukung field ber-tanda-kutip yang memuat koma. */
 function parseCsv(text: string): string[][] {
@@ -53,8 +55,18 @@ function parseCsv(text: string): string[][] {
 
 async function main() {
   const { db } = await import('../src/lib/db');
-  const { stockCategories, stockItems } = await import('../src/lib/db/schema');
-  const { eq } = await import('drizzle-orm');
+  const { stockCategories, stockItems, pops } = await import('../src/lib/db/schema');
+  const { and, eq } = await import('drizzle-orm');
+
+  const [targetPop] = await db
+    .select({ id: pops.id })
+    .from(pops)
+    .where(eq(pops.code, TARGET_POP_CODE))
+    .limit(1);
+  if (!targetPop) {
+    throw new Error(`POP dengan code "${TARGET_POP_CODE}" tidak ditemukan — jalankan npm run db:seed dulu`);
+  }
+  const popId = targetPop.id;
 
   const rows = parseCsv(readFileSync(CSV_PATH, 'utf8'));
   const header = rows.shift();
@@ -62,7 +74,7 @@ async function main() {
     throw new Error(`Format CSV tak dikenal (header: ${header?.join(',')})`);
   }
 
-  // 1. Kategori (unik, urutan sesuai kemunculan pertama di CSV)
+  // 1. Kategori (unik per POP, urutan sesuai kemunculan pertama di CSV)
   const categoryOrder: string[] = [];
   for (const [kategori] of rows) {
     if (!categoryOrder.includes(kategori)) categoryOrder.push(kategori);
@@ -74,7 +86,7 @@ async function main() {
     const existing = await db
       .select({ id: stockCategories.id })
       .from(stockCategories)
-      .where(eq(stockCategories.name, name))
+      .where(and(eq(stockCategories.popId, popId), eq(stockCategories.name, name)))
       .limit(1);
 
     if (existing.length > 0) {
@@ -86,7 +98,7 @@ async function main() {
     } else {
       const [inserted] = await db
         .insert(stockCategories)
-        .values({ name, sortOrder: i })
+        .values({ popId, name, sortOrder: i })
         .returning({ id: stockCategories.id });
       categoryIdByName.set(name, inserted.id);
     }
@@ -107,7 +119,7 @@ async function main() {
     const existing = await db
       .select({ id: stockItems.id })
       .from(stockItems)
-      .where(eq(stockItems.code, kode))
+      .where(and(eq(stockItems.popId, popId), eq(stockItems.code, kode)))
       .limit(1);
 
     if (existing.length > 0) {
@@ -118,6 +130,7 @@ async function main() {
       updated++;
     } else {
       await db.insert(stockItems).values({
+        popId,
         code: kode,
         name: nama,
         categoryId,

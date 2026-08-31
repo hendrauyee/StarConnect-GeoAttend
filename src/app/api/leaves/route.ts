@@ -3,7 +3,8 @@ import { and, desc, eq, gte, inArray, lte } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '@/lib/db';
 import { leaveRequests, user } from '@/lib/db/schema';
-import { getApiSession, isAdmin, unauthorizedResponse } from '@/lib/auth/utils';
+import { getApiSession, isAdmin, unauthorizedResponse, badRequestResponse } from '@/lib/auth/utils';
+import { resolvePopScope } from '@/lib/auth/pop-scope';
 import { CreateLeaveSchema, type LeaveRequestResponse } from '@/types/api';
 import { rangesOverlap } from '@/lib/leaves';
 import { appToday } from '@/lib/time';
@@ -55,6 +56,14 @@ export async function GET(req: NextRequest) {
 
     const conditions = [];
     if (userId) conditions.push(eq(leaveRequests.userId, userId));
+
+    // Admin/super_admin melihat daftar (bukan satu userId spesifik): batasi ke POP aktif
+    if (isAdmin(session) && !userId) {
+      const scope = resolvePopScope(session, req);
+      if ('error' in scope) return scope.error;
+      if (!scope.popId) return badRequestResponse('Pilih POP terlebih dahulu');
+      conditions.push(eq(user.popId, scope.popId));
+    }
 
     const status = params.get('status');
     if (status) conditions.push(eq(leaveRequests.status, status));
@@ -187,6 +196,7 @@ export async function POST(req: NextRequest) {
     if (inserted[0].status === 'pending') {
       notifyAdminLeaveSubmitted({
         requesterId: session.user.id,
+        requesterPopId: session.user.popId ?? '',
         requesterName: session.user.name,
         type: inserted[0].type,
         startDate: inserted[0].startDate,

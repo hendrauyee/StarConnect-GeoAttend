@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { geofences } from '@/lib/db/schema';
 import {
@@ -7,7 +7,9 @@ import {
   isAdmin,
   unauthorizedResponse,
   forbiddenResponse,
+  badRequestResponse,
 } from '@/lib/auth/utils';
+import { resolvePopScope } from '@/lib/auth/pop-scope';
 import { UpdateGeofenceSchema, type GeofenceResponse } from '@/types/api';
 
 export const dynamic = 'force-dynamic';
@@ -29,10 +31,14 @@ export async function GET(req: NextRequest) {
     const session = await getApiSession(req);
     if (!session) return unauthorizedResponse();
 
+    const scope = resolvePopScope(session, req);
+    if ('error' in scope) return scope.error;
+    if (!scope.popId) return badRequestResponse('Pilih POP terlebih dahulu');
+
     const rows = await db
       .select()
       .from(geofences)
-      .where(eq(geofences.isActive, true))
+      .where(and(eq(geofences.isActive, true), eq(geofences.popId, scope.popId)))
       .limit(1);
 
     if (!rows[0]) {
@@ -59,6 +65,10 @@ export async function PUT(req: NextRequest) {
     if (!session) return unauthorizedResponse();
     if (!isAdmin(session)) return forbiddenResponse();
 
+    const scope = resolvePopScope(session, req);
+    if ('error' in scope) return scope.error;
+    if (!scope.popId) return badRequestResponse('Pilih POP terlebih dahulu');
+
     const body = await req.json();
     const parsed = UpdateGeofenceSchema.safeParse(body);
     if (!parsed.success) {
@@ -77,7 +87,7 @@ export async function PUT(req: NextRequest) {
     const existing = await db
       .select({ id: geofences.id })
       .from(geofences)
-      .where(eq(geofences.isActive, true))
+      .where(and(eq(geofences.isActive, true), eq(geofences.popId, scope.popId)))
       .limit(1);
 
     let result;
@@ -98,6 +108,7 @@ export async function PUT(req: NextRequest) {
       result = await db
         .insert(geofences)
         .values({
+          popId: scope.popId,
           name: input.name,
           latitude: String(input.latitude),
           longitude: String(input.longitude),

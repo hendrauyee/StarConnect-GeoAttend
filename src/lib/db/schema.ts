@@ -40,13 +40,15 @@ export const user = pgTable('users', {
   emailVerified: boolean('email_verified').default(false).notNull(),
   image: text('image'),
   coverImage: text('cover_image'), // foto sampul profil (opsional)
-  role: varchar('role', { length: 20 }).default('employee').notNull(), // 'admin' | 'employee'
+  role: varchar('role', { length: 20 }).default('employee').notNull(), // 'super_admin' | 'administrator' | 'admin' | 'noc' | 'teknisi' | 'employee' | 'gudang'
   /**
    * Tim jaga lembur malam untuk role teknisi: 'ganjil' | 'genap' (null = belum
    * ditetapkan / bukan teknisi). Tim ganjil siaga pada tanggal ganjil, tim
    * genap pada tanggal genap.
    */
   technicianTeam: varchar('technician_team', { length: 10 }),
+  /** POP (site) pemilik akun ini. NULL hanya untuk role 'super_admin' — tidak terikat satu POP. */
+  popId: uuid('pop_id').references(() => pops.id),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -101,8 +103,25 @@ export const verification = pgTable('verifications', {
 // Tabel Domain GeoAttend
 // ============================================
 
+/**
+ * POP (Point of Presence) — satu kantor/site ISP yang berdiri sendiri:
+ * karyawan, teknisi, admin, geofence, shift, jadwal, izin, live tracking, dan
+ * stok gudangnya masing-masing terisolasi per POP.
+ */
+export const pops = pgTable('pops', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  name: varchar('name', { length: 255 }).notNull(),
+  code: varchar('code', { length: 20 }).notNull().unique(),
+  isActive: boolean('is_active').default(true).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
 export const geofences = pgTable('geofences', {
   id: uuid('id').defaultRandom().primaryKey(),
+  popId: uuid('pop_id')
+    .references(() => pops.id)
+    .notNull(),
   name: varchar('name', { length: 255 }).notNull(),
   latitude: numeric('latitude', { precision: 10, scale: 7 }).notNull(),
   longitude: numeric('longitude', { precision: 10, scale: 7 }).notNull(),
@@ -120,6 +139,9 @@ export const shiftSettings = pgTable(
   'shift_settings',
   {
     id: uuid('id').defaultRandom().primaryKey(),
+    popId: uuid('pop_id')
+      .references(() => pops.id)
+      .notNull(),
     role: varchar('role', { length: 20 }).notNull(), // 'admin' | 'noc' | 'teknisi'
     shiftNumber: integer('shift_number').notNull(),
     startTime: varchar('start_time', { length: 5 }).notNull(), // format "HH:mm"
@@ -128,7 +150,8 @@ export const shiftSettings = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    roleShiftUnique: uniqueIndex('shift_settings_role_number_idx').on(
+    roleShiftUnique: uniqueIndex('shift_settings_pop_role_number_idx').on(
+      table.popId,
       table.role,
       table.shiftNumber
     ),
@@ -316,6 +339,11 @@ export const piketAssignments = pgTable(
   'piket_assignments',
   {
     id: uuid('id').defaultRandom().primaryKey(),
+    // Kolom langsung (bukan lewat join userId->user.popId): constraint unik
+    // "satu petugas per tanggal" harus per-POP, jadi popId wajib ikut di index.
+    popId: uuid('pop_id')
+      .references(() => pops.id)
+      .notNull(),
     date: varchar('date', { length: 10 }).notNull(), // "yyyy-MM-dd"
     userId: text('user_id')
       .references(() => user.id, { onDelete: 'cascade' })
@@ -326,7 +354,7 @@ export const piketAssignments = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    dateUnique: uniqueIndex('piket_assignments_date_idx').on(table.date),
+    dateUnique: uniqueIndex('piket_assignments_pop_date_idx').on(table.popId, table.date),
   })
 );
 
@@ -372,18 +400,27 @@ export const attendanceRecords = pgTable(
 );
 
 // ============================================
-// Modul Stok Gudang (KusumaVisionStock)
+// Modul Stok Gudang (StarConnect Stock)
 // ============================================
 
 /**
  * Kategori barang gudang (KABEL, AKSESORIS TV, RATIO, dll).
  */
-export const stockCategories = pgTable('stock_categories', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  name: varchar('name', { length: 100 }).notNull().unique(),
-  sortOrder: integer('sort_order').default(0).notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+export const stockCategories = pgTable(
+  'stock_categories',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    popId: uuid('pop_id')
+      .references(() => pops.id)
+      .notNull(),
+    name: varchar('name', { length: 100 }).notNull(),
+    sortOrder: integer('sort_order').default(0).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    popNameUnique: uniqueIndex('stock_categories_pop_name_idx').on(table.popId, table.name),
+  })
+);
 
 /**
  * Master barang. `openingStock` = stok awal saat migrasi (diambil dari kolom
@@ -395,7 +432,10 @@ export const stockItems = pgTable(
   'stock_items',
   {
     id: uuid('id').defaultRandom().primaryKey(),
-    code: varchar('code', { length: 50 }).notNull().unique(),
+    popId: uuid('pop_id')
+      .references(() => pops.id)
+      .notNull(),
+    code: varchar('code', { length: 50 }).notNull(),
     name: varchar('name', { length: 255 }).notNull(),
     categoryId: uuid('category_id').references(() => stockCategories.id),
     unit: varchar('unit', { length: 20 }).default('pcs').notNull(),
@@ -408,6 +448,8 @@ export const stockItems = pgTable(
   },
   (table) => ({
     categoryIdx: index('stock_items_category_idx').on(table.categoryId),
+    popIdx: index('stock_items_pop_idx').on(table.popId),
+    popCodeUnique: uniqueIndex('stock_items_pop_code_idx').on(table.popId, table.code),
   })
 );
 
@@ -419,6 +461,11 @@ export const stockMovements = pgTable(
   'stock_movements',
   {
     id: uuid('id').defaultRandom().primaryKey(),
+    // Disimpan langsung (bukan lewat join itemId->stockItems.popId) supaya
+    // query buku besar tidak perlu join tambahan.
+    popId: uuid('pop_id')
+      .references(() => pops.id)
+      .notNull(),
     itemId: uuid('item_id')
       .references(() => stockItems.id, { onDelete: 'cascade' })
       .notNull(),
@@ -432,6 +479,7 @@ export const stockMovements = pgTable(
   (table) => ({
     itemIdx: index('stock_movements_item_idx').on(table.itemId),
     createdAtIdx: index('stock_movements_created_at_idx').on(table.createdAt),
+    popIdx: index('stock_movements_pop_idx').on(table.popId),
   })
 );
 

@@ -51,6 +51,7 @@ function formatRentang(startDate: string, endDate: string): string {
  */
 export function notifyAdminLeaveSubmitted(input: {
   requesterId: string;
+  requesterPopId: string;
   requesterName: string;
   type: string;
   startDate: string;
@@ -65,7 +66,7 @@ export function notifyAdminLeaveSubmitted(input: {
           body: `${input.requesterName} — ${formatRentang(input.startDate, input.endDate)}. Menunggu persetujuan.`,
           data: { kind: 'leave_request', id: input.leaveId },
         },
-        { exceptUserId: input.requesterId }
+        { popId: input.requesterPopId, exceptUserId: input.requesterId }
       ),
     `notifikasi izin baru (${input.leaveId})`
   );
@@ -216,6 +217,7 @@ export function notifyPeerSwapRequested(input: {
  */
 export function notifyAdminSwapAwaitingReview(input: {
   requesterId: string;
+  requesterPopId: string;
   targetId: string;
   kind: string;
   date: string;
@@ -238,11 +240,14 @@ export function notifyAdminSwapAwaitingReview(input: {
 
     const nameOf = (id: string) => rows.find((r) => r.id === id)?.name ?? 'Pengguna terhapus';
 
-    return sendPushToAdministrators({
-      title: isLibur ? 'Tukar hari libur menunggu persetujuan' : 'Tukar shift menunggu persetujuan',
-      body: `${nameOf(input.requesterId)} ↔ ${nameOf(input.targetId)} — ${tanggal}. Rekan sudah setuju.`,
-      data: { kind: 'shift_swap', id: input.swapId },
-    });
+    return sendPushToAdministrators(
+      {
+        title: isLibur ? 'Tukar hari libur menunggu persetujuan' : 'Tukar shift menunggu persetujuan',
+        body: `${nameOf(input.requesterId)} ↔ ${nameOf(input.targetId)} — ${tanggal}. Rekan sudah setuju.`,
+        data: { kind: 'shift_swap', id: input.swapId },
+      },
+      { popId: input.requesterPopId }
+    );
   }, `notifikasi tukar shift (${input.swapId})`);
 }
 

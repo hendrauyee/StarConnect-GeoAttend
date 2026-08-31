@@ -6,6 +6,7 @@ import { auth } from '@/lib/auth';
 import {
   getApiSession,
   isAdmin,
+  isSuperAdmin,
   unauthorizedResponse,
   forbiddenResponse,
 } from '@/lib/auth/utils';
@@ -13,12 +14,24 @@ import { UpdateUserSchema } from '@/types/api';
 
 export const dynamic = 'force-dynamic';
 
-/** PATCH /api/users/[id] — update role/nama pengguna (admin saja). */
+function notFoundResponse() {
+  return NextResponse.json(
+    { code: 'NOT_FOUND', message: 'Pengguna tidak ditemukan', timestamp: new Date().toISOString() },
+    { status: 404 }
+  );
+}
+
+/** PATCH /api/users/[id] — update role/nama pengguna (admin saja, POP sendiri). */
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await getApiSession(req);
     if (!session) return unauthorizedResponse();
     if (!isAdmin(session)) return forbiddenResponse();
+
+    if (!isSuperAdmin(session)) {
+      const [target] = await db.select({ popId: user.popId }).from(user).where(eq(user.id, params.id)).limit(1);
+      if (!target || target.popId !== session.user.popId) return notFoundResponse();
+    }
 
     const body = await req.json();
     const parsed = UpdateUserSchema.safeParse(body);
@@ -125,17 +138,17 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
       );
     }
 
+    if (!isSuperAdmin(session)) {
+      const [target] = await db.select({ popId: user.popId }).from(user).where(eq(user.id, params.id)).limit(1);
+      if (!target || target.popId !== session.user.popId) return notFoundResponse();
+    }
+
     const deleted = await db
       .delete(user)
       .where(eq(user.id, params.id))
       .returning({ id: user.id });
 
-    if (!deleted[0]) {
-      return NextResponse.json(
-        { code: 'NOT_FOUND', message: 'Pengguna tidak ditemukan', timestamp: new Date().toISOString() },
-        { status: 404 }
-      );
-    }
+    if (!deleted[0]) return notFoundResponse();
 
     return NextResponse.json({ success: true });
   } catch (error) {

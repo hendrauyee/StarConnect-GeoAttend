@@ -23,7 +23,7 @@ export default function StockLayout({ children }: { children: React.ReactNode })
       </div>
 
       {/* Sub-tab hanya saat diakses dari dalam GeoAttend. Pada shell stok
-          (stok.kusumavision.net), navigasi sudah disediakan sidebar. */}
+          (stok.serayu.id), navigasi sudah disediakan sidebar. */}
       {brand !== 'stok' && (
         <nav
           aria-label="Navigasi stok"

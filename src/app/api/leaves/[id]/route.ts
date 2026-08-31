@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { leaveRequests } from '@/lib/db/schema';
+import { leaveRequests, user } from '@/lib/db/schema';
 import {
   getApiSession,
   isAdmin,
+  isSuperAdmin,
   unauthorizedResponse,
   forbiddenResponse,
 } from '@/lib/auth/utils';
@@ -45,6 +46,16 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         },
         { status: 400 }
       );
+    }
+
+    if (!isSuperAdmin(session)) {
+      const [owner] = await db
+        .select({ popId: user.popId })
+        .from(leaveRequests)
+        .innerJoin(user, eq(user.id, leaveRequests.userId))
+        .where(eq(leaveRequests.id, params.id))
+        .limit(1);
+      if (!owner || owner.popId !== session.user.popId) return notFoundResponse();
     }
 
     const updated = await db
@@ -110,8 +121,10 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
         userId: leaveRequests.userId,
         type: leaveRequests.type,
         status: leaveRequests.status,
+        userPopId: user.popId,
       })
       .from(leaveRequests)
+      .innerJoin(user, eq(user.id, leaveRequests.userId))
       .where(eq(leaveRequests.id, params.id))
       .limit(1);
 
@@ -122,6 +135,8 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
       const isOwner = leave.userId === session.user.id;
       const cancellable = leave.status === 'pending' || leave.type === 'libur';
       if (!isOwner || !cancellable) return forbiddenResponse();
+    } else if (!isSuperAdmin(session) && leave.userPopId !== session.user.popId) {
+      return notFoundResponse();
     }
 
     await db.delete(leaveRequests).where(eq(leaveRequests.id, params.id));

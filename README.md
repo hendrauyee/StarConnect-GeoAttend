@@ -115,7 +115,7 @@ Health check: `GET /api/health` → `{"status":"ok","db":"connected"}`
 ## 📁 Struktur Proyek
 
 ```
-KusumaVisionAbsensi/
+GeoAttend/
 ├── docs/                 # Dokumentasi teknis & panduan PDF pengguna
 ├── mobile/               # Aplikasi Native Android (Expo SDK 57 / React Native)
 │   ├── App.tsx           # Entry & tab navigator

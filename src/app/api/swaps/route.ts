@@ -3,7 +3,8 @@ import { and, desc, eq, gte, inArray, lte, or } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '@/lib/db';
 import { leaveRequests, scheduleEntries, shiftSwapRequests, user } from '@/lib/db/schema';
-import { getApiSession, isAdmin, unauthorizedResponse } from '@/lib/auth/utils';
+import { getApiSession, isAdmin, unauthorizedResponse, badRequestResponse } from '@/lib/auth/utils';
+import { resolvePopScope } from '@/lib/auth/pop-scope';
 import { CreateSwapSchema, type SwapKind, type SwapRequestResponse, type SwapStatus } from '@/types/api';
 import { appToday } from '@/lib/time';
 import { notifyPeerSwapRequested } from '@/lib/push/events';
@@ -63,6 +64,11 @@ export async function GET(req: NextRequest) {
           eq(shiftSwapRequests.targetId, session.user.id)
         )
       );
+    } else {
+      const scope = resolvePopScope(session, req);
+      if ('error' in scope) return scope.error;
+      if (!scope.popId) return badRequestResponse('Pilih POP terlebih dahulu');
+      conditions.push(eq(requester.popId, scope.popId));
     }
     if (status) conditions.push(eq(shiftSwapRequests.status, status));
 
@@ -130,11 +136,12 @@ export async function POST(req: NextRequest) {
     if (targetUserId === selfId) return fail('INVALID_SWAP', 'Tidak bisa menukar dengan diri sendiri');
     if (date <= today) return fail('INVALID_SWAP_DATE', 'Tukar hanya untuk tanggal ke depan');
 
-    // Rekan tujuan harus ada & satu role
+    // Rekan tujuan harus ada, satu role, DAN satu POP (mencegah tukar shift
+    // lintas-POP walau kebetulan role-nya sama)
     const [targetUser] = await db
       .select({ id: user.id, name: user.name, role: user.role })
       .from(user)
-      .where(eq(user.id, targetUserId))
+      .where(and(eq(user.id, targetUserId), eq(user.popId, session.user.popId ?? '')))
       .limit(1);
     if (!targetUser) return fail('NOT_FOUND', 'Rekan tidak ditemukan', 404);
     if (targetUser.role !== session.user.role) {

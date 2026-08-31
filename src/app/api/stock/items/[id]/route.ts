@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { stockItems } from '@/lib/db/schema';
-import { forbiddenResponse, getApiSession, unauthorizedResponse } from '@/lib/auth/utils';
+import { forbiddenResponse, getApiSession, unauthorizedResponse, badRequestResponse } from '@/lib/auth/utils';
+import { resolvePopScope } from '@/lib/auth/pop-scope';
 import { isStockManager } from '@/lib/roles';
 import { getStockItemById } from '@/lib/stock';
 import { saveStockPhoto } from '@/lib/storage/local-fs';
@@ -17,7 +18,11 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     const session = await getApiSession(req);
     if (!session) return unauthorizedResponse();
 
-    const item = await getStockItemById(params.id);
+    const scope = resolvePopScope(session, req);
+    if ('error' in scope) return scope.error;
+    if (!scope.popId) return badRequestResponse('Pilih POP terlebih dahulu');
+
+    const item = await getStockItemById(params.id, scope.popId);
     if (!item) return errorJson('NOT_FOUND', 'Barang tidak ditemukan', 404);
     return NextResponse.json(item);
   } catch (error) {
@@ -32,11 +37,16 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (!session) return unauthorizedResponse();
     if (!isStockManager(session.user.role)) return forbiddenResponse();
 
+    const scope = resolvePopScope(session, req);
+    if ('error' in scope) return scope.error;
+    if (!scope.popId) return badRequestResponse('Pilih POP terlebih dahulu');
+    const popId = scope.popId;
+
     const parsed = UpdateStockItemSchema.safeParse(await req.json());
     if (!parsed.success) return validationError(parsed.error.flatten());
     const input = parsed.data;
 
-    const existing = await getStockItemById(params.id);
+    const existing = await getStockItemById(params.id, popId);
     if (!existing) return errorJson('NOT_FOUND', 'Barang tidak ditemukan', 404);
 
     const patch: Partial<typeof stockItems.$inferInsert> = { updatedAt: new Date() };
@@ -56,7 +66,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       throw err;
     }
 
-    return NextResponse.json(await getStockItemById(params.id));
+    return NextResponse.json(await getStockItemById(params.id, popId));
   } catch (error) {
     return internalError(error, 'PATCH /api/stock/items/[id]');
   }
@@ -72,7 +82,11 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
     if (!session) return unauthorizedResponse();
     if (!isStockManager(session.user.role)) return forbiddenResponse();
 
-    const existing = await getStockItemById(params.id);
+    const scope = resolvePopScope(session, req);
+    if ('error' in scope) return scope.error;
+    if (!scope.popId) return badRequestResponse('Pilih POP terlebih dahulu');
+
+    const existing = await getStockItemById(params.id, scope.popId);
     if (!existing) return errorJson('NOT_FOUND', 'Barang tidak ditemukan', 404);
 
     await db

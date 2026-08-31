@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { asc } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { shiftSettings } from '@/lib/db/schema';
 import {
@@ -7,7 +7,9 @@ import {
   isAdmin,
   unauthorizedResponse,
   forbiddenResponse,
+  badRequestResponse,
 } from '@/lib/auth/utils';
+import { resolvePopScope } from '@/lib/auth/pop-scope';
 import { UpsertShiftsSchema } from '@/types/api';
 
 export const dynamic = 'force-dynamic';
@@ -18,6 +20,10 @@ export async function GET(req: NextRequest) {
     const session = await getApiSession(req);
     if (!session) return unauthorizedResponse();
 
+    const scope = resolvePopScope(session, req);
+    if ('error' in scope) return scope.error;
+    if (!scope.popId) return badRequestResponse('Pilih POP terlebih dahulu');
+
     const rows = await db
       .select({
         id: shiftSettings.id,
@@ -27,6 +33,7 @@ export async function GET(req: NextRequest) {
         endTime: shiftSettings.endTime,
       })
       .from(shiftSettings)
+      .where(eq(shiftSettings.popId, scope.popId))
       .orderBy(asc(shiftSettings.role), asc(shiftSettings.shiftNumber));
 
     return NextResponse.json({ data: rows });
@@ -49,6 +56,11 @@ export async function PUT(req: NextRequest) {
     if (!session) return unauthorizedResponse();
     if (!isAdmin(session)) return forbiddenResponse();
 
+    const scope = resolvePopScope(session, req);
+    if ('error' in scope) return scope.error;
+    if (!scope.popId) return badRequestResponse('Pilih POP terlebih dahulu');
+    const popId = scope.popId;
+
     const body = await req.json();
     const parsed = UpsertShiftsSchema.safeParse(body);
     if (!parsed.success) {
@@ -64,11 +76,14 @@ export async function PUT(req: NextRequest) {
     }
 
     const result = await db.transaction(async (tx) => {
-      await tx.delete(shiftSettings);
+      // Hanya hapus shift POP INI — bukan seluruh tabel (sebelumnya bug: hapus
+      // global akan menghapus jam kerja SOP semua POP lain).
+      await tx.delete(shiftSettings).where(eq(shiftSettings.popId, popId));
       return tx
         .insert(shiftSettings)
         .values(
           parsed.data.shifts.map((shift) => ({
+            popId,
             role: shift.role,
             shiftNumber: shift.shiftNumber,
             startTime: shift.startTime,

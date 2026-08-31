@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { eq, inArray } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import {
   account,
@@ -6,12 +7,14 @@ import {
   attendanceRecords,
   geofences,
   leaveRequests,
+  pops,
   shiftSettings,
   user,
 } from '@/lib/db/schema';
 import {
   getApiSession,
   isAdmin,
+  isSuperAdmin,
   unauthorizedResponse,
   forbiddenResponse,
 } from '@/lib/auth/utils';
@@ -20,7 +23,13 @@ import { APP_VERSION } from '@/lib/constants';
 export const dynamic = 'force-dynamic';
 
 /**
- * GET /api/admin/backup — ekspor seluruh data aplikasi sebagai JSON.
+ * GET /api/admin/backup?popId=<uuid> — ekspor data aplikasi sebagai JSON.
+ * - administrator: SELALU dibatasi ke POP miliknya sendiri (popId di query
+ *   diabaikan) — mencegah kebocoran data POP lain lewat backup, termasuk
+ *   password hash di tabel accounts.
+ * - super_admin TANPA ?popId=: backup GLOBAL seluruh POP (mis. sebelum
+ *   maintenance sistem). DENGAN ?popId=: backup satu POP saja.
+ *
  * Catatan: file foto (uploads/) TIDAK termasuk — backup folder tersebut terpisah.
  * Session & verifikasi sengaja tidak diekspor (ephemeral). Jejak lokasi
  * (location_trails) juga sengaja tidak diekspor: data operasional berumur 90
@@ -33,15 +42,40 @@ export async function GET(req: NextRequest) {
     if (!session) return unauthorizedResponse();
     if (!isAdmin(session)) return forbiddenResponse();
 
-    const [users, accounts, geofenceRows, shiftRows, recordRows, settingRows, leaveRows] =
+    const popId = isSuperAdmin(session)
+      ? req.nextUrl.searchParams.get('popId')
+      : session.user.popId;
+
+    const [popRows, users] = await Promise.all([
+      popId ? db.select().from(pops).where(eq(pops.id, popId)) : db.select().from(pops),
+      popId ? db.select().from(user).where(eq(user.popId, popId)) : db.select().from(user),
+    ]);
+    const userIds = users.map((u) => u.id);
+
+    const [accounts, geofenceRows, shiftRows, recordRows, settingRows, leaveRows] =
       await Promise.all([
-        db.select().from(user),
-        db.select().from(account),
-        db.select().from(geofences),
-        db.select().from(shiftSettings),
-        db.select().from(attendanceRecords),
-        db.select().from(appSettings),
-        db.select().from(leaveRequests),
+        userIds.length > 0
+          ? db.select().from(account).where(inArray(account.userId, userIds))
+          : popId
+            ? []
+            : db.select().from(account),
+        popId ? db.select().from(geofences).where(eq(geofences.popId, popId)) : db.select().from(geofences),
+        popId
+          ? db.select().from(shiftSettings).where(eq(shiftSettings.popId, popId))
+          : db.select().from(shiftSettings),
+        userIds.length > 0
+          ? db.select().from(attendanceRecords).where(inArray(attendanceRecords.userId, userIds))
+          : popId
+            ? []
+            : db.select().from(attendanceRecords),
+        // Pengaturan aplikasi (nama/logo/kode pendaftaran) bersifat GLOBAL, bukan
+        // milik satu POP — hanya ikut backup global (super_admin, tanpa popId).
+        popId ? Promise.resolve([]) : db.select().from(appSettings),
+        userIds.length > 0
+          ? db.select().from(leaveRequests).where(inArray(leaveRequests.userId, userIds))
+          : popId
+            ? []
+            : db.select().from(leaveRequests),
       ]);
 
     const backup = {
@@ -49,6 +83,7 @@ export async function GET(req: NextRequest) {
       appVersion: APP_VERSION,
       exportedAt: new Date().toISOString(),
       data: {
+        pops: popRows,
         users,
         accounts,
         geofences: geofenceRows,

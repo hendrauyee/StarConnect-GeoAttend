@@ -118,18 +118,20 @@ export async function sendPushToUsers(
 }
 
 /**
- * Kirim ke semua pengelola sistem (role `administrator`), bukan role kerja
- * `admin` — lihat catatan di [[src/lib/auth/utils.ts]] `isAdmin`.
+ * Kirim ke semua pengelola sistem (role `administrator`) SATU POP, bukan role
+ * kerja `admin` — lihat catatan di [[src/lib/auth/utils.ts]] `isAdmin`.
  *
+ * `popId` WAJIB diisi agar notifikasi tidak bocor lintas-POP (administrator
+ * POP lain tidak perlu tahu pengajuan izin/lembur/swap POP lain).
  * `exceptUserId` dipakai agar administrator yang mengajukan sesuatu untuk
  * dirinya sendiri tidak menerima notifikasi tentang aksinya sendiri.
  */
 export async function sendPushToAdministrators(
   payload: PushPayload,
-  options?: { exceptUserId?: string }
+  options: { popId: string; exceptUserId?: string }
 ): Promise<PushResult> {
-  const conditions = [eq(user.role, 'administrator')];
-  if (options?.exceptUserId) conditions.push(ne(user.id, options.exceptUserId));
+  const conditions = [eq(user.role, 'administrator'), eq(user.popId, options.popId)];
+  if (options.exceptUserId) conditions.push(ne(user.id, options.exceptUserId));
 
   const admins = await db
     .select({ id: user.id })

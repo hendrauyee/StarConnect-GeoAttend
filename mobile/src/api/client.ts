@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
 /** Alamat server default — server kantor. Bisa diganti di layar login. */
-export const DEFAULT_SERVER_URL = 'https://absensi.kusumavision.net';
+export const DEFAULT_SERVER_URL = 'https://absensi.serayu.id';
 
 const SERVER_URL_KEY = 'geoattend_server_url';
 const TOKEN_KEY = 'geoattend_auth_token';

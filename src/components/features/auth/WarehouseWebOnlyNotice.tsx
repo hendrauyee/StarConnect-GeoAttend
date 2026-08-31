@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 
 /**
  * Layar penolakan untuk akun Admin Gudang bila diakses dari domain absensi.
- * Akun gudang hanya boleh dipakai lewat stok.kusumavision.net.
+ * Akun gudang hanya boleh dipakai lewat stok.serayu.id.
  */
 export function WarehouseWebOnlyNotice() {
   const router = useRouter();
@@ -25,7 +25,7 @@ export function WarehouseWebOnlyNotice() {
       </span>
       <h1 className="text-xl font-bold tracking-tight text-text-primary">Akun Admin Gudang</h1>
       <p className="max-w-sm text-sm text-text-secondary">
-        Akun ini hanya bisa dipakai di <b className="text-text-primary">stok.kusumavision.net</b> —
+        Akun ini hanya bisa dipakai di <b className="text-text-primary">stok.serayu.id</b> —
         bukan di halaman absensi maupun aplikasi mobile.
       </p>
       <Button variant="outline" onClick={handleSignOut}>
